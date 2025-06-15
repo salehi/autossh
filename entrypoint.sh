@@ -47,10 +47,25 @@ test_ssh_connection() {
     local auth_method="$1"
     log "Testing SSH connection with $auth_method authentication..."
     
-    # Test connection by running a simple command
-    if ssh -F /root/.ssh/config target "echo 'SSH connection successful'" 2>/dev/null; then
-        log "SSH connection test successful with $auth_method authentication"
-        return 0
+    # Test connection by attempting to establish a port forward (which will work even with restricted keys)
+    # Use a temporary high port for testing, then immediately close it
+    local test_port=$((20000 + RANDOM % 10000))
+    
+    if timeout 10 ssh -F /root/.ssh/config -N -L ${test_port}:127.0.0.1:22 target &
+    then
+        local ssh_pid=$!
+        sleep 2
+        
+        # Check if the SSH process is still running (means connection was established)
+        if kill -0 $ssh_pid 2>/dev/null; then
+            kill $ssh_pid 2>/dev/null
+            wait $ssh_pid 2>/dev/null
+            log "SSH connection test successful with $auth_method authentication"
+            return 0
+        else
+            log "SSH connection test failed with $auth_method authentication"
+            return 1
+        fi
     else
         log "SSH connection test failed with $auth_method authentication"
         return 1
@@ -157,8 +172,18 @@ EOF
             apk add --no-cache sshpass
         fi
         
-        # Test connection with password
-        if SSHPASS="$SSH_PASS" sshpass -e ssh -F /root/.ssh/config target "echo 'SSH connection successful'" 2>/dev/null; then
+        # Test connection with password using port forwarding
+        local test_port=$((20000 + RANDOM % 10000))
+        if timeout 10 sh -c "SSHPASS='$SSH_PASS' sshpass -e ssh -F /root/.ssh/config -N -L ${test_port}:127.0.0.1:22 target &
+            ssh_pid=\$!
+            sleep 2
+            if kill -0 \$ssh_pid 2>/dev/null; then
+                kill \$ssh_pid 2>/dev/null
+                wait \$ssh_pid 2>/dev/null
+                exit 0
+            else
+                exit 1
+            fi" 2>/dev/null; then
             log "SSH connection test successful with password authentication"
             return 0
         else
