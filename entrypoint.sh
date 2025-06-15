@@ -42,35 +42,7 @@ Host target
     LogLevel ERROR
 EOF
 
-# Function to test SSH connection
-test_ssh_connection() {
-    local auth_method="$1"
-    log "Testing SSH connection with $auth_method authentication..."
-    
-    # Test connection by attempting to establish a port forward (which will work even with restricted keys)
-    # Use a temporary high port for testing, then immediately close it
-    local test_port=$((20000 + RANDOM % 10000))
-    
-    if timeout 10 ssh -F /root/.ssh/config -N -L ${test_port}:127.0.0.1:22 target &
-    then
-        local ssh_pid=$!
-        sleep 2
-        
-        # Check if the SSH process is still running (means connection was established)
-        if kill -0 $ssh_pid 2>/dev/null; then
-            kill $ssh_pid 2>/dev/null
-            wait $ssh_pid 2>/dev/null
-            log "SSH connection test successful with $auth_method authentication"
-            return 0
-        else
-            log "SSH connection test failed with $auth_method authentication"
-            return 1
-        fi
-    else
-        log "SSH connection test failed with $auth_method authentication"
-        return 1
-    fi
-}
+
 
 # Function to setup certificate authentication
 setup_certificate_auth() {
@@ -91,27 +63,7 @@ setup_certificate_auth() {
     CertificateFile /tmp/ssh_certificate
     IdentitiesOnly yes
 EOF
-        
-        if test_ssh_connection "certificate"; then
-            return 0
-        fi
-        
-        # Clean up failed certificate setup
-        rm -f /tmp/ssh_private_key /tmp/ssh_certificate
-        
-        # Reset SSH config for next attempt
-        cat > /root/.ssh/config << EOF
-Host target
-    HostName ${SSH_HOST}
-    Port ${SSH_PORT}
-    User ${SSH_USER}
-    ServerAliveInterval 10
-    ServerAliveCountMax 3
-    ConnectTimeout 5
-    StrictHostKeyChecking no
-    UserKnownHostsFile /dev/null
-    LogLevel ERROR
-EOF
+        return 0
     fi
     return 1
 }
@@ -130,27 +82,7 @@ setup_key_auth() {
     IdentityFile /tmp/ssh_private_key
     IdentitiesOnly yes
 EOF
-        
-        if test_ssh_connection "private key"; then
-            return 0
-        fi
-        
-        # Clean up failed key setup
-        rm -f /tmp/ssh_private_key
-        
-        # Reset SSH config for next attempt
-        cat > /root/.ssh/config << EOF
-Host target
-    HostName ${SSH_HOST}
-    Port ${SSH_PORT}
-    User ${SSH_USER}
-    ServerAliveInterval 10
-    ServerAliveCountMax 3
-    ConnectTimeout 5
-    StrictHostKeyChecking no
-    UserKnownHostsFile /dev/null
-    LogLevel ERROR
-EOF
+        return 0
     fi
     return 1
 }
@@ -172,29 +104,14 @@ EOF
             apk add --no-cache sshpass
         fi
         
-        # Test connection with password using port forwarding
-        local test_port=$((20000 + RANDOM % 10000))
-        if timeout 10 sh -c "SSHPASS='$SSH_PASS' sshpass -e ssh -F /root/.ssh/config -N -L ${test_port}:127.0.0.1:22 target &
-            ssh_pid=\$!
-            sleep 2
-            if kill -0 \$ssh_pid 2>/dev/null; then
-                kill \$ssh_pid 2>/dev/null
-                wait \$ssh_pid 2>/dev/null
-                exit 0
-            else
-                exit 1
-            fi" 2>/dev/null; then
-            log "SSH connection test successful with password authentication"
-            return 0
-        else
-            log "SSH connection test failed with password authentication"
-        fi
+        return 0
     fi
     return 1
 }
 
 # Try authentication methods in priority order
 auth_successful=false
+auth_method=""
 
 # 1. Certificate authentication (highest priority)
 if setup_certificate_auth; then
@@ -209,11 +126,11 @@ elif setup_password_auth; then
 fi
 
 if [[ "$auth_successful" == "false" ]]; then
-    log "ERROR: All authentication methods failed"
+    log "ERROR: No authentication method provided"
     exit 1
 fi
 
-log "Successfully configured $auth_method authentication"
+log "Configured $auth_method authentication"
 
 # Set up AutoSSH environment variables
 export AUTOSSH_GATETIME=30
