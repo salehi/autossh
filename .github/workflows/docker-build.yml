@@ -37,5 +37,5 @@ jobs:
         password: ${{ secrets.DOCKERHUB_TOKEN }}
         repository: s4l3h1/autossh
         short-description: "AutoSSH container for tunneling"
-        readme-filepath: ./readme.md
+        readme-filepath: ./README.md
 
