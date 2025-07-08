@@ -30,3 +30,12 @@ jobs:
           s4l3h1/autossh:alpine
           s4l3h1/autossh:alpine-${{ github.sha }}
         platforms: linux/amd64,linux/arm64,linux/386
+    - name: Update Docker Hub description
+      uses: peter-evans/dockerhub-description@v3
+      with:
+        username: ${{ secrets.DOCKERHUB_USERNAME }}
+        password: ${{ secrets.DOCKERHUB_TOKEN }}
+        repository: s4l3h1/autossh
+        short-description: "AutoSSH container for tunneling"
+        readme-filepath: ./readme.md
+
